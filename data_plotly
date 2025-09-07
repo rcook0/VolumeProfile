@@ -1,0 +1,14 @@
+import pandas as pd
+import plotly.graph_objects as go
+
+df = pd.read_csv("data.csv", parse_dates=["datetime"])
+
+fig = go.Figure(data=[go.Candlestick(
+    x=df["datetime"],
+    open=df["open"],
+    high=df["high"],
+    low=df["low"],
+    close=df["close"]
+)])
+fig.update_layout(xaxis_rangeslider_visible=False, template="plotly_dark")
+fig.show()
