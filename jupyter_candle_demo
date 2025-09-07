@@ -4,9 +4,9 @@
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "# Candlestick Chart Demo\n",
+    "# Candlestick Chart with VP Strategy Signals\n",
     "\n",
-    "This notebook loads `data.csv` (15-minute OHLCV candles) and shows candlestick charts using both **mplfinance** and **Plotly**."
+    "Loads `data.csv`, runs the Volume Profile breakout strategy (Backtrader), and overlays BUY/SELL markers on candlestick charts (mplfinance + Plotly)."
    ]
   },
   {
@@ -15,7 +15,7 @@
    "metadata": {},
    "outputs": [],
    "source": [
-    "!pip install mplfinance plotly pandas"
+    "!pip install mplfinance plotly pandas backtrader"
    ]
   },
   {
@@ -26,7 +26,9 @@
    "source": [
     "import pandas as pd\n",
     "import mplfinance as mpf\n",
-    "import plotly.graph_objects as go"
+    "import plotly.graph_objects as go\n",
+    "import backtrader as bt\n",
+    "import matplotlib.pyplot as plt"
    ]
   },
   {
@@ -51,7 +53,7 @@
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## Static Candlestick (mplfinance)"
+    "## Backtrader Strategy (with signal recording)"
    ]
   },
   {
@@ -60,14 +62,35 @@
    "metadata": {},
    "outputs": [],
    "source": [
-    "mpf.plot(df.tail(200), type=\"candle\", style=\"yahoo\", volume=True, mav=(20,50))"
+    "signals = []\n",
+    "\n",
+    "class VPStrategy(bt.Strategy):\n",
+    "    def next(self):\n",
+    "        vah = max(self.data.high.get(size=24))\n",
+    "        val = min(self.data.low.get(size=24))\n",
+    "        vwap = (self.data.high[0] + self.data.low[0] + self.data.close[0]) / 3\n",
+    "\n",
+    "        if not self.position:\n",
+    "            if self.data.close[0] > vah and self.data.close[0] > vwap:\n",
+    "                self.buy()\n",
+    "                signals.append((self.data.datetime.datetime(0), self.data.close[0], \"BUY\"))\n",
+    "            elif self.data.close[0] < val and self.data.close[0] < vwap:\n",
+    "                self.sell()\n",
+    "                signals.append((self.data.datetime.datetime(0), self.data.close[0], \"SELL\"))\n",
+    "\n",
+    "# Run backtest\n",
+    "data = bt.feeds.PandasData(dataname=df)\n",
+    "cerebro = bt.Cerebro()\n",
+    "cerebro.addstrategy(VPStrategy)\n",
+    "cerebro.adddata(data)\n",
+    "cerebro.run()"
    ]
   },
   {
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## Interactive Candlestick (Plotly)"
+    "## Static Candlestick (mplfinance) with Signals"
    ]
   },
   {
@@ -76,29 +99,15 @@
    "metadata": {},
    "outputs": [],
    "source": [
-    "fig = go.Figure(data=[go.Candlestick(\n",
-    "    x=df.index,\n",
-    "    open=df[\"open\"],\n",
-    "    high=df[\"high\"],\n",
-    "    low=df[\"low\"],\n",
-    "    close=df[\"close\"]\n",
-    ")])\n",
-    "fig.update_layout(xaxis_rangeslider_visible=False, template=\"plotly_dark\")\n",
-    "fig.show()"
-   ]
-  }
- ],
- "metadata": {
-  "kernelspec": {
-   "display_name": "Python 3",
-   "language": "python",
-   "name": "python3"
-  },
-  "language_info": {
-   "name": "python",
-   "version": "3.9"
-  }
- },
- "nbformat": 4,
- "nbformat_minor": 2
-}
+    "df_plot = df.tail(200)\n",
+    "\n",
+    "buy_signals = [(d,p) for d,p,s in signals if s==\"BUY\" and d in df_plot.index]\n",
+    "sell_signals = [(d,p) for d,p,s in signals if s==\"SELL\" and d in df_plot.index]\n",
+    "\n",
+    "apds = []\n",
+    "if buy_signals:\n",
+    "    apds.append(mpf.make_addplot([p for d,p in buy_signals], type='scatter', markersize=100, marker='^', color='g', panel=0))\n",
+    "if sell_signals:\n",
+    "    apds.append(mpf.make_addplot([p for d,p in sell_signals], type='scatter', markersize=100, marker='v', color='r', panel=0))\n",
+    "\n",
+    "mpf.plot(df_plot, type=\"candle\", style=\"yahoo\", volume=True, mav=(20,50), addplot=apds)"
